@@ -1,110 +1,126 @@
-# FHEVM Hardhat Template
+🔐 Private Sealed-Bid Auction (fhEVM • Fully Homomorphic Encryption)
 
-A Hardhat-based template for developing Fully Homomorphic Encryption (FHE) enabled Solidity smart contracts using the
-FHEVM protocol by Zama.
+A privacy-preserving auction system built using Zama’s fhEVM.
+All bids are encrypted on-chain, meaning:
 
-## Quick Start
+No one (not even the contract owner) can see individual bid values.
 
-For detailed instructions see:
-[FHEVM Hardhat Quick Start Tutorial](https://docs.zama.ai/protocol/solidity-guides/getting-started/quick-start-tutorial)
+Bids remain fully confidential.
 
-### Prerequisites
+Winner computation happens off-chain using FHE decryption helpers.
 
-- **Node.js**: Version 20 or higher
-- **npm or yarn/pnpm**: Package manager
+Only the final revealed winner is ever exposed (optional).
 
-### Installation
+This project is an end-to-end demonstration for the Zama Builder Track.
 
-1. **Install dependencies**
+🚀 Features
+✔ Encrypted bid submission
 
-   ```bash
-   npm install
-   ```
+Users submit an euint64 encrypted value.
+Smart contract stores the ciphertext directly.
 
-2. **Set up environment variables**
+✔ No on-chain decryption
 
-   ```bash
-   npx hardhat vars set MNEMONIC
+fhEVM no longer allows synchronous decryption on-chain.
+All decryption is done off-chain, exactly as intended in modern FHEVM.
 
-   # Set your Infura API key for network access
-   npx hardhat vars set INFURA_API_KEY
+✔ Owner-controlled auction closing
 
-   # Optional: Set Etherscan API key for contract verification
-   npx hardhat vars set ETHERSCAN_API_KEY
-   ```
+Once closed, no more bids can be placed.
 
-3. **Compile and test**
+✔ Export bidders + encrypted bids
 
-   ```bash
-   npm run compile
-   npm run test
-   ```
+The contract exposes view functions so an off-chain script can:
 
-4. **Deploy to local network**
+Fetch all encrypted bids
 
-   ```bash
-   # Start a local FHEVM-ready node
-   npx hardhat node
-   # Deploy to local network
-   npx hardhat deploy --network localhost
-   ```
+Decrypt them using the FHEVM oracle
 
-5. **Deploy to Sepolia Testnet**
+Determine the winner
 
-   ```bash
-   # Deploy to Sepolia
-   npx hardhat deploy --network sepolia
-   # Verify contract on Etherscan
-   npx hardhat verify --network sepolia <CONTRACT_ADDRESS>
-   ```
+(Optional) Call a public revealWinner(...) method
 
-6. **Test on Sepolia Testnet**
+🧱 Contract Overview
 
-   ```bash
-   # Once deployed, you can run a simple test on Sepolia.
-   npx hardhat test --network sepolia
-   ```
+Located at:
+contracts/PrivateAuction.sol
 
-## 📁 Project Structure
+Implements:
 
-```
-fhevm-hardhat-template/
-├── contracts/           # Smart contract source files
-│   └── FHECounter.sol   # Example FHE counter contract
-├── deploy/              # Deployment scripts
-├── tasks/               # Hardhat custom tasks
-├── test/                # Test files
-├── hardhat.config.ts    # Hardhat configuration
-└── package.json         # Dependencies and scripts
-```
+placeBid(euint64 bid)
 
-## 📜 Available Scripts
+closeAuction()
 
-| Script             | Description              |
-| ------------------ | ------------------------ |
-| `npm run compile`  | Compile all contracts    |
-| `npm run test`     | Run all tests            |
-| `npm run coverage` | Generate coverage report |
-| `npm run lint`     | Run linting checks       |
-| `npm run clean`    | Clean build artifacts    |
+getEncryptedBid(address bidder)
 
-## 📚 Documentation
+getBidders()
 
-- [FHEVM Documentation](https://docs.zama.ai/fhevm)
-- [FHEVM Hardhat Setup Guide](https://docs.zama.ai/protocol/solidity-guides/getting-started/setup)
-- [FHEVM Testing Guide](https://docs.zama.ai/protocol/solidity-guides/development-guide/hardhat/write_test)
-- [FHEVM Hardhat Plugin](https://docs.zama.ai/protocol/solidity-guides/development-guide/hardhat)
+🧪 Testing
 
-## 📄 License
+Run:
+npx hardhat test
 
-This project is licensed under the BSD-3-Clause-Clear License. See the [LICENSE](LICENSE) file for details.
+Tests include:
 
-## 🆘 Support
+Deploying the auction
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/zama-ai/fhevm/issues)
-- **Documentation**: [FHEVM Docs](https://docs.zama.ai)
-- **Community**: [Zama Discord](https://discord.gg/zama)
+Submitting simulated encrypted bids
+
+Closing auction
+
+Verifying bidder list integrity
+
+
+The test file is located at:
+test/PrivateAuction.test.ts
+
+🧰 Off-Chain Winner Selection (FHE Decryption)
+
+The FHEVM development model requires an off-chain step to decrypt.
+Typical workflow:
+
+Fetch encrypted bids via Hardhat script:
+
+const bidders = await auction.getBidders();
+const encrypted = await auction.getEncryptedBid(bidder);
+
+
+Use fhEVM’s decrypt utilities (FHE Oracle)
+
+Compute the highest bid locally
+
+(Optional) Call a function like revealWinner(address,uint256)
+
+This architecture follows Zama’s official async-decryption model.
+
+📁 Project Structure
+contracts/
+ └── PrivateAuction.sol
+test/
+ └── PrivateAuction.test.ts
+scripts/
+README.md
+
+🏆 Why This Project Fits the Builder Track
+Realistic privacy use-case
 
 ---
 
-**Built with ❤️ by the Zama team**
+## 🔁 End-to-end demo script
+
+To see the full flow in one command (deploy → bid → close → decrypt → pick winner), run:
+
+```bash
+npx hardhat run scripts/demoAuction.ts
+
+End-to-end working code
+
+Tests included
+
+Off-chain cryptographic workflow
+
+Clean architecture following fhEVM best practices
+
+
+
+MADE WITH ❤️ FOR ZAMA BY THEUVKHAN
