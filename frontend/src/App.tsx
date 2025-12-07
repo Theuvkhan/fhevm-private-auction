@@ -1,333 +1,226 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 
-// ------------ CONFIG ------------
+// ---------------- CONFIG ----------------
 
 // VPS Hardhat RPC
 const RPC_URL = "http://89.58.32.26:8545";
 
-// Deployed PrivateAuction contract
-const CONTRACT_ADDRESS = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+// PrivateAuction contract address (latest from your deployment)
+const CONTRACT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
 
-// Minimal ABI for the UI
+// Minimal ABI for UI
 const AUCTION_ABI = [
   "function auctionOpen() view returns (bool)",
-  "function placeBid(bytes bid) external",
+  "function placeBid(bytes32 bid) external",
   "function closeAuction() external",
   "function getBidders() view returns (address[])",
-  "function getEncryptedBid(address bidder) view returns (bytes)",
+  "function getEncryptedBid(address bidder) view returns (bytes32)"
 ];
 
-// Encode uint64 into 32 bytes (simulated encrypted payload)
+// Encode uint64 → bytes32 (last 8 bytes) as raw bytes
 function encodeBid(amount: bigint): Uint8Array {
   const buf = new ArrayBuffer(32);
   const view = new DataView(buf);
-  view.setBigUint64(24, amount); // last 8 bytes
-  return new Uint8Array(buf);
+  view.setBigUint64(24, amount); // last 8 bytes hold the bid
+  return new Uint8Array(buf);    // ethers can send this as bytes32
 }
 
-// Narrowed contract type so TS knows our functions
-type AuctionContract = ethers.Contract & {
-  auctionOpen: () => Promise<boolean>;
-  placeBid: (bid: Uint8Array) => Promise<ethers.TransactionResponse>;
-};
-
 export default function App() {
-  const [provider, setProvider] = useState<ethers.JsonRpcProvider | null>(null);
-  const [contract, setContract] = useState<AuctionContract | null>(null);
-
-  const [status, setStatus] = useState("Connecting to public auction view…");
+  const [status, setStatus] = useState("Initializing…");
   const [auctionOpen, setAuctionOpen] = useState<boolean | null>(null);
-
   const [bidAmount, setBidAmount] = useState("100");
-  const [busy, setBusy] = useState(false);
+  const [decodedBids, setDecodedBids] = useState<any[]>([]);
 
-  // ---- connect to RPC + contract ----
-  useEffect(() => {
-    async function init() {
-      try {
-        const p = new ethers.JsonRpcProvider(RPC_URL);
-        await p.getBlockNumber(); // connectivity test
+  // ---------------- LOAD AUCTION STATUS ----------------
+  const loadStatus = async () => {
+    try {
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, AUCTION_ABI, provider);
 
-        const c = new ethers.Contract(
-          CONTRACT_ADDRESS,
-          AUCTION_ABI,
-          p
-        ) as AuctionContract;
+      const open = await contract.auctionOpen();
+      setAuctionOpen(open);
 
-        setProvider(p);
-        setContract(c);
-
-        try {
-          const open = await c.auctionOpen();
-          setAuctionOpen(open);
-        } catch {
-          setAuctionOpen(null);
-        }
-
-        setStatus("Connected to public auction view.");
-      } catch (err) {
-        console.error(err);
-        setStatus("Public view loaded. Node might be offline.");
-        setAuctionOpen(null);
-      }
+      setStatus("Connected to auction.");
+    } catch (err) {
+      console.error(err);
+      setStatus("Failed to connect. Hardhat node offline?");
     }
+  };
 
-    init();
+  useEffect(() => {
+    loadStatus();
   }, []);
 
-  // ---- submit bid (real tx via Hardhat demo account[1]) ----
-  async function submitBid() {
-    if (!provider || !contract) {
-      setStatus("Cannot submit – backend node unavailable.");
-      return;
-    }
-    if (!bidAmount) return;
-
-    setBusy(true);
+  // ---------------- SUBMIT BID ----------------
+  const submitBid = async () => {
     try {
-      const amt = BigInt(bidAmount);
-      const encoded = encodeBid(amt);
+      setStatus("Submitting bid…");
 
-      // Hardhat built-in account[1] as demo bidder
-      const signer1 = await provider.getSigner(1);
-      const writable = contract.connect(signer1) as AuctionContract;
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const signer = await provider.getSigner(1); // bidder demo account
 
-      const tx = await writable.placeBid(encoded);
-      setStatus("Sending bid transaction…");
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, AUCTION_ABI, signer);
+
+      const encoded = encodeBid(BigInt(bidAmount));
+      const tx = await contract.placeBid(encoded);
       await tx.wait();
 
-      setStatus(`Bid ${amt.toString()} placed on-chain from demo account[1].`);
+      setStatus(`Bid ${bidAmount} submitted successfully!`);
     } catch (err) {
       console.error(err);
       setStatus("Bid failed. Check node or contract.");
-    } finally {
-      setBusy(false);
     }
-  }
+  };
 
-  // ---- disabled owner / fetch actions in public view ----
-  function handleOwnerDisabled() {
-    setStatus("Owner-only actions are disabled in this public demo.");
-  }
+  // ---------------- CLOSE AUCTION ----------------
+  const closeAuction = async () => {
+    try {
+      setStatus("Closing auction…");
 
-  function handleFetchDisabled() {
-    setStatus("Off-chain decryption is disabled in public demo. Use local full version.");
-  }
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const signer = await provider.getSigner(0); // owner
 
-  // IMPORTANT: do NOT depend on auctionOpen for enabling the button
-  const canSubmitBid = !!provider && !!contract && !busy;
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, AUCTION_ABI, signer);
 
-  // ------------- UI -------------
+      const tx = await contract.closeAuction();
+      await tx.wait();
+
+      setStatus("Auction closed.");
+      setAuctionOpen(false);
+    } catch (err) {
+      console.error(err);
+      setStatus("Failed to close auction.");
+    }
+  };
+
+  // ---------------- DECODE RESULTS OFF-CHAIN ----------------
+  const fetchAndDecode = async () => {
+    try {
+      setStatus("Decoding bids off-chain…");
+
+      const provider = new ethers.JsonRpcProvider(RPC_URL);
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, AUCTION_ABI, provider);
+
+      const bidders: string[] = await contract.getBidders();
+      if (!bidders.length) {
+        setStatus("No bidders found.");
+        return;
+      }
+
+      const decoded: any[] = [];
+
+      for (const bidder of bidders) {
+        const raw = await contract.getEncryptedBid(bidder); // bytes32 hex string
+
+        if (!raw || raw === "0x") continue;
+
+        const hex = raw.startsWith("0x") ? raw.slice(2) : raw;
+
+        // last 16 hex chars = last 8 bytes = uint64
+        const last16 = hex.slice(-16);
+        const amount = BigInt("0x" + last16);
+
+        decoded.push({ bidder, amount });
+      }
+
+      if (decoded.length === 0) {
+        setStatus("Could not decode bids.");
+        return;
+      }
+
+      // Winner = highest amount
+      decoded.sort((a, b) => Number(b.amount - a.amount));
+      const winner = decoded[0];
+
+      setDecodedBids(decoded);
+      setStatus(
+        `Decoded ${decoded.length} bids. Winner: ${winner.bidder.slice(0, 6)}…${winner.bidder.slice(
+          -4
+        )} with bid ${winner.amount.toString()}.`
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus("Failed to fetch/decode bids.");
+    }
+  };
+
+  // ---------------- UI ----------------
   return (
-    <div
-      style={{
-        fontFamily: "Inter, system-ui, sans-serif",
-        background: "#000",
-        minHeight: "100vh",
-        color: "#fff",
-      }}
-    >
-      {/* Top yellow bar */}
-      <div
-        style={{
-          background: "#f5c518",
-          padding: "16px 28px",
-          fontWeight: "bold",
-          fontSize: "18px",
-          color: "#000",
-        }}
-      >
-        ZAMA • PRIVATE AUCTION DEMO
-        <button
-          style={{
-            float: "right",
-            background: "#000",
-            color: "#fff",
-            padding: "6px 16px",
-            borderRadius: "20px",
-            border: "none",
-            fontWeight: "bold",
-            cursor: "default",
-          }}
-        >
-          READ-ONLY PUBLIC VIEW
-        </button>
+    <div style={{ background: "black", minHeight: "100vh", color: "white", padding: "20px" }}>
+      <h1 style={{ fontSize: "42px", fontWeight: "bold" }}>🔐 Private Sealed-Bid Auction</h1>
+
+      {/* STATUS BOX */}
+      <div style={{ background: "#0d0f18", padding: "20px", borderRadius: "8px", marginBottom: "20px" }}>
+        <p><b>Status:</b> {status}</p>
+        <p><b>Contract:</b> {CONTRACT_ADDRESS}</p>
+        <p><b>Auction open:</b> {auctionOpen ? "✓ yes" : "X no"}</p>
       </div>
 
-      {/* Main content wrapper */}
-      <div
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-          padding: "32px 24px 48px",
-        }}
-      >
-        <h1 style={{ fontSize: "40px", marginBottom: "8px", fontWeight: 800 }}>
-          🔐 Private Sealed-Bid Auction
-        </h1>
+      <div style={{ display: "flex", gap: "20px" }}>
+        
+        {/* BID BOX */}
+        <div style={{ flex: 1, background: "#0d0f18", padding: "20px", borderRadius: "8px" }}>
+          <h2>Place bid (demo mode)</h2>
+          <p>Uses Hardhat demo account[1] to submit an encoded bid on-chain.</p>
 
-        <p style={{ maxWidth: "900px", color: "#d4d4d4" }}>
-          On-chain bids are stored as encrypted blobs. This public interface
-          sends bids using a built-in demo account and keeps owner actions
-          disabled, so the auction state stays stable for viewers.
-        </p>
+          <input
+            value={bidAmount}
+            onChange={(e) => setBidAmount(e.target.value)}
+            style={{ width: "100%", padding: "10px", borderRadius: "6px", marginBottom: "10px" }}
+          />
 
-        {/* Status card */}
-        <div
-          style={{
-            background: "#0d1117",
-            padding: "20px",
-            borderRadius: "12px",
-            marginTop: "24px",
-            marginBottom: "28px",
-          }}
-        >
-          <div>
-            <strong>Status:</strong> {status}
-          </div>
-          <div>
-            <strong>Contract:</strong> {CONTRACT_ADDRESS}
-          </div>
-          <div>
-            <strong>Auction open:</strong>{" "}
-            {auctionOpen === null ? "…" : auctionOpen ? "✓ yes" : "✗ no"}
-          </div>
-          <p style={{ marginTop: "8px", color: "#9ca3af", fontSize: "0.9rem" }}>
-            Public demo – no wallet connection required. Owner-only operations
-            and FHE decryption flow are available in the local developer
-            version.
-          </p>
-        </div>
-
-        {/* Grid: bid + owner */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "28px",
-          }}
-        >
-          {/* Bid panel */}
-          <div
+          <button
+            onClick={submitBid}
             style={{
-              background: "#0d1117",
-              padding: "24px",
-              borderRadius: "12px",
+              width: "100%", padding: "15px",
+              background: "#00c853", border: "none",
+              borderRadius: "6px", color: "black", fontSize: "18px"
             }}
           >
-            <h2>Place bid (demo mode)</h2>
-            <p style={{ color: "#9ca3af" }}>
-              Uses Hardhat demo account[1] to submit an encoded bid amount
-              on-chain.
-            </p>
+            Submit bid
+          </button>
+        </div>
 
-            <label style={{ fontSize: "0.9rem" }}>Bid amount (uint64)</label>
-            <input
-              type="number"
-              min={0}
-              value={bidAmount}
-              onChange={(e) => setBidAmount(e.target.value)}
-              style={{
-                marginTop: "8px",
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: "8px",
-                border: "1px solid #374151",
-                background: "#111827",
-                color: "#f9fafb",
-              }}
-            />
+        {/* OWNER CONTROLS */}
+        <div style={{ flex: 1, background: "#0d0f18", padding: "20px", borderRadius: "8px" }}>
+          <h2>Owner controls</h2>
 
-            <button
-              disabled={!canSubmitBid}
-              onClick={submitBid}
-              style={{
-                marginTop: "14px",
-                width: "100%",
-                padding: "12px 14px",
-                borderRadius: "10px",
-                border: "none",
-                fontWeight: 600,
-                fontSize: "0.95rem",
-                background: canSubmitBid ? "#22c55e" : "#374151",
-                color: "#000",
-                cursor: canSubmitBid ? "pointer" : "not-allowed",
-              }}
-            >
-              {busy ? "Submitting…" : "Submit bid"}
-            </button>
-          </div>
-
-          {/* Owner panel */}
-          <div
+          <button
+            onClick={closeAuction}
             style={{
-              background: "#0d1117",
-              padding: "24px",
-              borderRadius: "12px",
+              width: "100%", padding: "15px",
+              background: "#555", border: "none",
+              borderRadius: "6px", color: "white", marginBottom: "10px"
             }}
           >
-            <h2>Owner controls</h2>
-            <p style={{ color: "#9ca3af" }}>
-              In the local version, the auction owner can close the auction and
-              run the FHE decryption flow. In this public demo these actions are
-              intentionally disabled.
-            </p>
+            Close auction (owner[0])
+          </button>
 
-            <button
-              onClick={handleOwnerDisabled}
-              disabled
-              style={{
-                width: "100%",
-                padding: "12px 14px",
-                marginTop: "10px",
-                borderRadius: "10px",
-                border: "none",
-                background: "#1f2933",
-                color: "#9ca3af",
-                fontWeight: 600,
-                cursor: "not-allowed",
-              }}
-            >
-              Owner-only (local demo)
-            </button>
+          <button
+            onClick={fetchAndDecode}
+            style={{
+              width: "100%", padding: "15px",
+              background: "#1e88e5", border: "none",
+              borderRadius: "6px", color: "white"
+            }}
+          >
+            Fetch & decode bids (off-chain)
+          </button>
+        </div>
+      </div>
 
-            <button
-              onClick={handleFetchDisabled}
-              disabled
-              style={{
-                width: "100%",
-                padding: "12px 14px",
-                marginTop: "10px",
-                borderRadius: "10px",
-                border: "none",
-                background: "#1c4d7f",
-                color: "#d1d5db",
-                fontWeight: 600,
-                cursor: "not-allowed",
-              }}
-            >
-              Disabled in public demo mode
-            </button>
+      {/* DECODED RESULTS */}
+      <div style={{ marginTop: "30px", background: "#0d0f18", padding: "20px", borderRadius: "8px" }}>
+        <h2>Off-chain decoded view</h2>
+
+        {!decodedBids.length && <p>No decoded bids yet.</p>}
+
+        {decodedBids.map((b) => (
+          <div key={b.bidder} style={{ padding: "8px 0", borderBottom: "1px solid #333" }}>
+            <b>{b.bidder.slice(0, 6)}…{b.bidder.slice(-4)}</b> — Bid: {b.amount.toString()}
           </div>
-        </div>
-
-        {/* Off-chain decoded view placeholder */}
-        <div
-          style={{
-            marginTop: "32px",
-            background: "#0d1117",
-            padding: "24px",
-            borderRadius: "12px",
-          }}
-        >
-          <h2>Off-chain decoded view</h2>
-          <p style={{ color: "#9ca3af", fontSize: "0.9rem" }}>
-            In the full fhEVM developer setup, this section would display
-            decrypted bids and the computed winner using the FHE oracle. For the
-            public demo, decryption is intentionally disabled.
-          </p>
-        </div>
+        ))}
       </div>
     </div>
   );
