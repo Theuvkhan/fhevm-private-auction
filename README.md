@@ -2,6 +2,12 @@ Private Sealed-Bid Auction (FHEVM-Inspired Demo)
 Hardhat • React • Off-Chain Decryption
 
 Read Only demo (https://fhevm-private-auction.vercel.app/)
+⚠️ The online Vercel demo is READ-ONLY.
+To run the fully working encrypted auction, clone the repo and run it locally:
+npm install
+npm run hardhat
+npm run dev
+
 
 Local demo instructions (http://89.58.32.26:5173/)
 
