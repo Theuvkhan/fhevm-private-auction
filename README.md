@@ -29,9 +29,9 @@ Using bytes32 as a mock encrypted bid
 
 And replicates the intended FHE workflow:
 
-```Bidder → Encrypted Bid → On-Chain Storage → Auction Close → Off-Chain Decryption → Winner Reveal
+``` Bidder → Encrypted Bid → On-Chain Storage → Auction Close → Off-Chain Decryption → Winner Reveal ```
 
-```
+
 This allows a complete demonstration without running a full FHE worker network.
 
 🚀 Features
@@ -101,8 +101,8 @@ Off-chain logic decrypts and reveals winner
 tmux new -s hardhat
 npx hardhat node
  ```
-``` Ctrl + B, then D
- ```
+
+``` Ctrl + B, then D ```
 
 2️⃣ Deploy new contract
 
@@ -118,29 +118,29 @@ Copy the contract address.
 3️⃣ Update frontend contract address
 
 ``` cd ~/fhevm-private-auction/frontend/src
-nano App.tsx
- ```
+nano App.tsx ```
+
 Find:
-``` const CONTRACT_ADDRESS = "0x...";
- ```
+
+``` const CONTRACT_ADDRESS = "0x..."; ```
+
 Paste the new address.
 Save:
+
 ``` Ctrl + O
 Enter
-Ctrl + X
- ```
+Ctrl + X ```
 
 4️⃣ Start frontend (background)
 ``` cd ~/fhevm-private-auction/frontend
 tmux new -s auction
-npm run dev -- --host 0.0.0.0 --port 5173
- ```
+npm run dev -- --host 0.0.0.0 --port 5173 ```
+
 Detach again:
-``` Ctrl + B, then D
- ```
+
+``` Ctrl + B, then D ```
 🧪 Running Tests
-``` npx hardhat test
- ```
+``` npx hardhat test ```
 
 ▶ How to Use the App
 Public User
@@ -159,8 +159,7 @@ After closing, can fetch & decode results
 
 UI shows:
 ``` Bidder  → Decoded Amount  
-Winner → Highest Bid  
- ```
+Winner → Highest Bid ```
 
 🔄 Redeploying a New Auction (important!)
 
@@ -175,16 +174,14 @@ Update frontend → App.tsx → CONTRACT_ADDRESS
 Restart frontend tmux session:
 ``` tmux attach -t auction
 Ctrl + C
-npm run dev -- --host 0.0.0.0 --port 5173
- ```
+npm run dev -- --host 0.0.0.0 --port 5173 ```
  
 🔬 How Encryption Is Simulated
 
 Real FHE ciphertexts are large and computed server-side.
 
 This demo uses:
-``` bytes32 mockCipher
- ```
+``` bytes32 mockCipher ```
 Where:
 
 The last 8 bytes hold the numeric bid
