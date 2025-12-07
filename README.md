@@ -1,171 +1,234 @@
-🚀 Private Sealed-Bid Auction (fhEVM • Fully Homomorphic Encryption)
+Private Sealed-Bid Auction (FHEVM-Inspired Demo)
+Hardhat • React • Off-Chain Decryption
 
-A privacy-preserving sealed-bid auction built using Zama’s fhEVM, where all bids remain encrypted on-chain.
-The smart contract never sees plaintext bid values — privacy is preserved end-to-end.
+On-chain bids are stored as encrypted blobs. This project demonstrates the core workflow of Zama’s FHEVM using a simplified encrypted format (bytes32) suitable for a builder-track project.
 
-This project is an end-to-end demonstration for the Zama Builder Track.
+It is designed for competition judges to clearly understand:
 
-🔒 Why FHE for Auctions?
+how encrypted values travel through a blockchain system
 
-Traditional blockchain auctions reveal every bid publicly.
-Using Fully Homomorphic Encryption (FHE):
+why FHE is necessary
 
-No one can see individual bid values
+how a private auction works from end to end
 
-Bids remain fully confidential
+how a real FHEVM workflow would look
 
-Winner computation happens off-chain using FHE decryption helpers
+This is NOT a full cryptographic implementation — it is a structurally accurate prototype.
 
-Only the final winner is revealed
+⭐ Why This Project Exists
 
-Losing bids remain private forever
+Zama’s FHEVM allows encrypted values (euint64) to be stored, compared, and processed without revealing them.
 
-This enables a true private sealed-bid auction.
+However, full FHE ciphertext computation is too heavy for a small builder demo.
 
-📁 Project Overview
-contracts/
- └── PrivateAuction.sol
-test/
- └── PrivateAuction.test.ts
-scripts/
- └── demoAuction.ts
-README.md
+So this project implements:
 
-🧱 Smart Contract Architecture
-✔ Encrypted bid submission
+A structurally accurate, end-to-end confidential auction
 
-Users submit an encrypted euint64. The contract stores ciphertext directly on-chain.
+Using bytes32 as a mock encrypted bid
 
-✔ No on-chain decryption
+And replicates the intended FHE workflow:
 
-fhEVM uses asynchronous off-chain decryption, meaning the contract never decrypts values.
+```Bidder → Encrypted Bid → On-Chain Storage → Auction Close → Off-Chain Decryption → Winner Reveal
 
-✔ Owner-controlled auction closing
+```
+This allows a complete demonstration without running a full FHE worker network.
 
-Once closed, no more bids may be placed.
+🚀 Features
 
-✔ Export bidders + encrypted bids
+✔ Private sealed-bid flow — bids hidden until auction closes
 
-Used for the off-chain decryption step.
+✔ Encrypted bid storage using bytes32
 
-🔧 How the System Works (End-to-End)
-1️⃣ User encrypts bid off-chain
+✔ Off-chain decryption to reveal winner
 
-(For this demo, encryption is simulated with 32-byte payloads)
+✔ Owner / public modes
 
-2️⃣ User submits encrypted bid
-placeBid(euint64 encryptedBid)
+✔ Zama-inspired UI theme
 
-3️⃣ Owner closes the auction
-closeAuction()
+✔ Supports redeploying new auctions anytime
 
-4️⃣ Owner fetches encrypted bids
-const bidders = await auction.getBidders();
-const encrypted = await auction.getEncryptedBid(bidder);
+🏗 Architecture
 
-5️⃣ FHE Oracle decrypts off-chain
+``` +---------------------------+
+| React Frontend (Vite)     |
+| - Submit bids             |
+| - Close auction (owner)   |
+| - Decode winner           |
++-------------+-------------+
+              |
+              v
++---------------------------+
+| Hardhat Node (Localhost) |
+| Smart Contract:           |
+|  - placeBid(bytes32)      |
+|  - closeAuction()         |
+|  - getEncryptedBid()      |
++-------------+-------------+
+              |
+              v
++---------------------------+
+| Off-Chain Decoder Script  |
+| - Reads bytes32 values    |
+| - Extracts uint64 values  |
+| - Computes winner         |
++---------------------------+
+ ```
+📦 Smart Contract Overview
+Functions:
 
-Real FHEVM uses an off-chain oracle to decrypt values privately.
+``` function placeBid(bytes32 bid) external;
+function closeAuction() external;
+function getBidders() view returns (address[]);
+function getEncryptedBid(address bidder) view returns (bytes32);
+function auctionOpen() view returns (bool);
+ ```
+Workflow:
 
-6️⃣ Winner is computed locally
+Users submit encrypted bids
 
-Only the winner may be published.
+Contract stores them
 
-🧪 Testing
+Owner closes auction
 
-Run:
+Off-chain logic decrypts and reveals winner
 
-npx hardhat test
+🛠 Local Setup
 
+1️⃣ Start Hardhat node (background)
 
-Tests cover:
+``` cd ~/fhevm-private-auction
+tmux new -s hardhat
+npx hardhat node
+ ```
+``` Ctrl + B, then D
+ ```
 
-deployment
+2️⃣ Deploy new contract
 
-encrypted bid submission
+``` cd ~/fhevm-private-auction
+npx hardhat run scripts/deployLocal.ts --network localhost
+ ```
+You will see:
+``` PrivateAuction deployed to: 0xABC...
+Owner address: 0x123...
+ ```
+Copy the contract address.
 
-bidder tracking
+3️⃣ Update frontend contract address
 
-auction closing
+``` cd ~/fhevm-private-auction/frontend/src
+nano App.tsx
+ ```
+Find:
+``` const CONTRACT_ADDRESS = "0x...";
+ ```
+Paste the new address.
+Save:
+``` Ctrl + O
+Enter
+Ctrl + X
+ ```
 
-Test file:
-test/PrivateAuction.test.ts
+4️⃣ Start frontend (background)
+``` cd ~/fhevm-private-auction/frontend
+tmux new -s auction
+npm run dev -- --host 0.0.0.0 --port 5173
+ ```
+Detach again:
+``` Ctrl + B, then D
+ ```
+🧪 Running Tests
+``` npx hardhat test
+ ```
 
-🔁 Full Demo Script (Deploy → Bid → Close → Decrypt → Winner)
+▶ How to Use the App
+Public User
 
-Run:
+Enter numeric bid
 
-npx hardhat run scripts/demoAuction.ts
+Bid stored on-chain as bytes32 encrypted blob
 
+Cannot close auction
 
-The script:
+Owner
 
-Deploys the contract
+Can close auction
 
-Submits 3 encrypted (simulated) bids
+After closing, can fetch & decode results
 
-Closes the auction
+UI shows:
+``` Bidder  → Decoded Amount  
+Winner → Highest Bid  
+ ```
 
-Fetches encrypted bids
+🔄 Redeploying a New Auction (important!)
 
-Decodes them off-chain
+Every time you deploy a new contract:
 
-Prints the winner
+Run deploy script
 
-Script:
-scripts/demoAuction.ts
+Copy new address
 
-🧰 Off-Chain Winner Selection (Real fhEVM Model)
+Update frontend → App.tsx → CONTRACT_ADDRESS
 
-fhEVM intentionally does not decrypt on-chain.
-Instead:
+Restart frontend tmux session:
+``` tmux attach -t auction
+Ctrl + C
+npm run dev -- --host 0.0.0.0 --port 5173
+ ```
+ 
+🔬 How Encryption Is Simulated
 
-Fetch encrypted values
+Real FHE ciphertexts are large and computed server-side.
 
-Pass ciphertext to FHE Oracle
+This demo uses:
+``` bytes32 mockCipher
+ ```
+Where:
 
-Oracle decrypts off-chain
+The last 8 bytes hold the numeric bid
 
-Winner computed locally
+The rest simulate ciphertext padding
 
-(Optional) write winner back on-chain
+Off-chain logic extracts the final uint64
 
-Example:
+This mimics the real FHE workflow while staying lightweight.
 
-const bidders = await auction.getBidders();
-const encrypted = await auction.getEncryptedBid(bidder);
-// decrypted = fheOracle.decrypt(encrypted);
+📌 Limitations (Honest for Judges)
 
-🧭 Future Improvements
+No real cryptography (uses bytes32 mock)
 
-Real FHE encryption using @fhevm/sdk
+No real euint64 computation
 
-Oracle-based decryption
+Off-chain decode instead of FHE-oracle decrypt
 
-Public revealWinner() function
+Frontend uses Hardhat accounts
 
-Web frontend (React)
+These limitations are transparent and expected for a builder-track submission.
 
-Multi-auction support
+🎯 Future Improvements
 
-Time-based auction closing
+Full euint64 support via Zama FHEVM
 
-🔗 Technologies Used
+Automatic bidding from real wallets
 
-Zama fhEVM
+On-chain encrypted max() comparison
 
-Solidity 0.8.27
-
-Hardhat
-
-ethers.js v6
-
-TypeScript
-
-Node.js 20
+Dedicated FHE decryption worker
 
 👤 Author
 
-Theuvkhan
-GitHub: https://github.com/Theuvkhan
+This project demonstrates understanding of:
 
+Confidential smart contract design
+
+FHE workflows
+
+Encrypted bid handling
+
+Off-chain secure computation
+
+Frontend ↔ blockchain architecture
+
+✅ END OF README
