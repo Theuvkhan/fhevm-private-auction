@@ -1,6 +1,12 @@
 Private Sealed-Bid Auction (FHEVM-Inspired Demo)
 Hardhat • React • Off-Chain Decryption
 
+Read Only demo (https://fhevm-private-auction.vercel.app/)
+
+Local demo instructions (http://89.58.32.26:5173/)
+
+
+
 On-chain bids are stored as encrypted blobs. This project demonstrates the core workflow of Zama’s FHEVM using a simplified encrypted format (bytes32) suitable for a builder-track project.
 
 It is designed for competition judges to clearly understand:
